@@ -1,21 +1,121 @@
 body {
-  background: #000;
   color: #fff;
 }
 
-#sidebar, #updatestatus, #chatcontrols, #chat, #chatinput {
-  background: #0B3351 !important
+#updatestatus {
+  background: #262c32;
+  width: 100%;
+  color: #d4d5d6;
+  border: 0;
+  padding: 0;
 }
 
+#updatestatus .map {
+  margin-left: 4px;
+}
 
-.leaflet-control-layers {
-  margin-left: 0 !important;
-  margin-top: 40px !important;
+#innerstatus {
+  padding: 4px;
+  float: right;
+  width: 50%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+#loadlevel {
+  border-width: 0;
+  background: transparent;
+  color: #FFF;
+}
+
+#mobileinfo {
+  float: left;
+  width: 50%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  position:relative;
+  padding: 4px 0;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+#mobileinfo .portallevel {
+  padding: 0 0.25em;
+  color: #FFF;
+}
+
+#mobileinfo .resonator {
+  position: absolute;
+  width: 12%; /* a little less that 1/8 to have a small distance */
+  height: 100%;
+  top: 0;
+  border-top: 3px solid red;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+}
+
+#mobileinfo .resonator.north:before {
+  content: "";
+  background-color: red;
+  border-radius: 100%;
+  display: block;
+  height: 6px;
+  width: 6px;
+  left: 50%;
+  top: -3px; 
+  margin-left: -3px;
+  position: absolute;
+  z-index: -1;
+}
+
+#mobileinfo .filllevel {
+  position: absolute;
+  bottom: 0;
+  height: 3px;
+}
+
+#mobileinfo .enl .filllevel {
+  background-color: #03fe03 !important;
+}
+
+#mobileinfo .res .filllevel {
+  background-color: #00c5ff !important;
+}
+
+#name #signout { /* no hover, always show signout button */
+  display: block;
+}
+
+#sidebar, #chatcontrols, #chat, #chatinput {
+  background: transparent !important;
+}
+
+.leaflet-top .leaflet-control {
+  margin-top: 5px !important;
+  margin-left: 5px !important;
+}
+
+#searchwrapper {
+  font-size: 1.2em;
+}
+#searchwrapper .ui-accordion-header {
+  padding: 0.3em 0;
+}
+#searchwrapper li {
+  line-height: 1.3em;
 }
 
 #chatcontrols {
   height: 38px;
   width: 100%;
+  display: none !important;
 }
 
 /* hide shrink button */
@@ -38,7 +138,7 @@ body {
 #chat {
   left:0;
   right:0;
-  top:37px !important;
+  top: 1px !important;
   bottom:30px;
   width: auto;
 }
@@ -52,15 +152,21 @@ body {
   width: 77px;
 }
 
+#chatcontrols a.active {
+  border-color: #FFCE00;
+  border-bottom-width:0px;
+  font-weight:bold
+}
 
-
+#chatcontrols a.active + a {
+  border-left-color: #FFCE00
+}
 
 #sidebartoggle {
   display: none !important;
 }
 
 #scrollwrapper {
-  top: 36px;
   bottom: 0;
   max-height: none !important;
   width: 100% !important;
@@ -90,25 +196,32 @@ body {
   width: 100%;
 }
 
-.leaflet-control-layers-base {
-  float: left;
+/*
+ * for some reason leaflet popups on mobile are colored white on white
+ * so force the popup msg color to black
+ */
+.leaflet-popup-content{
+    color:black;
 }
 
-.leaflet-control-layers-overlays {
-  float: left;
-  margin-left: 8px;
-  border-left: 1px solid #DDDDDD;
-  padding-left: 8px;
+
+/* add extra padding, and a button effect, to sidebar link areas */
+.linkdetails aside  {
+  padding: 5px;
+  margin-top: 3px;
+  margin-bottom: 3px;
+  border: 2px outset #20A8B1;
 }
 
-.leaflet-control-layers-separator {
-  display: none;
+#toolbox > a {
+  padding: 5px;
+  margin-top: 3px;
+  margin-bottom: 3px;
+  border: 2px outset #20A8B1;
 }
 
-.leaflet-control-layers-list label {
-  padding: 6px 0;
-}
-
-.leaflet-control-attribution {
-
+#portaldetails .close {
+  padding: 4px;
+  border: 1px outset #20A8B1;
+  margin-top: 2px;
 }

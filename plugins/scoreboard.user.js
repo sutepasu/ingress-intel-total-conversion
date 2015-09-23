@@ -1,328 +1,291 @@
 // ==UserScript==
 // @id             iitc-plugin-scoreboard@vita10gy
 // @name           IITC plugin: show a localized scoreboard.
-// @version        0.1.4.@@DATETIMEVERSION@@
+// @version        0.2.0.@@DATETIMEVERSION@@
+// @category       Info
 // @namespace      https://github.com/jonatkins/ingress-intel-total-conversion
 // @updateURL      @@UPDATEURL@@
 // @downloadURL    @@DOWNLOADURL@@
-// @description    [@@BUILDNAME@@-@@BUILDDATE@@] A localized scoreboard.
+// @description    [@@BUILDNAME@@-@@BUILDDATE@@] Display a scoreboard about all visible portals with statistics about both teams,like average portal level,link & field counts etc.
 // @include        https://www.ingress.com/intel*
 // @include        http://www.ingress.com/intel*
 // @match          https://www.ingress.com/intel*
 // @match          http://www.ingress.com/intel*
+// @include        https://www.ingress.com/mission/*
+// @include        http://www.ingress.com/mission/*
+// @match          https://www.ingress.com/mission/*
+// @match          http://www.ingress.com/mission/*
+// @grant          none
 // ==/UserScript==
-
-function wrapper() {
-// ensure plugin framework is there, even if iitc is not yet loaded
-if(typeof window.plugin !== 'function') window.plugin = function() {};
-
-
-// PLUGIN START ////////////////////////////////////////////////////////
-
-// use own namespace for plugin
-window.plugin.scoreboard = function() {};
-
-window.plugin.scoreboard.scores = {};
-window.plugin.scoreboard.playerGuids = new Array();
-
-window.plugin.scoreboard.resetTeam = function(team) {
-  var scores = window.plugin.scoreboard.scores['team'];
-  scores[team] = {};
-  scores[team]['mu'] = 0;
-  scores[team]['count_fields'] = 0;
-  scores[team]['count_links'] = 0;
-  scores[team]['count_portals'] = 0;
-  scores[team]['count_resonators'] = 0;
-  scores[team]['largest'] = {};   
-};
-
-window.plugin.scoreboard.initPlayer = function(player, team) {
-  var scores = window.plugin.scoreboard.scores['player'];
-  if(scores[player] === undefined) {
-    scores[player] = {};
-    scores[player]['team'] = team;
-    scores[player]['mu'] = 0;
-    scores[player]['count_fields'] = 0;
-    scores[player]['count_links'] = 0;
-    scores[player]['count_portals'] = 0;
-    scores[player]['count_resonators'] = 0;
-    //  scores[player]['count_shields'] = 0;
-    scores[player]['largest'] = {};
-    window.plugin.scoreboard.playerGuids.push(player);
-  }
-}
-
-window.plugin.scoreboard.compileStats = function() {
-  var somethingInView = false;  
-  window.plugin.scoreboard.playerGuids = new Array();
-  window.plugin.scoreboard.scores = {'team': {}, 'player': {}};
-  var scores = window.plugin.scoreboard.scores;
-  window.plugin.scoreboard.resetTeam(TEAM_RES);
-  window.plugin.scoreboard.resetTeam(TEAM_ENL);
-   
-  $.each(window.fields, function(qk, val) {
-    var team = getTeam(val.options.data);
-    var player = val.options.data.creator.creatorGuid;
-     
-    window.plugin.scoreboard.initPlayer(player,team);    
     
-    // Google sends fields long since dead in the data. This makes sure it's still actually up.
-    if(window.portals[val.options.vertices.vertexA.guid] !== undefined ||
-       window.portals[val.options.vertices.vertexB.guid] !== undefined ||
-       window.portals[val.options.vertices.vertexC.guid] !== undefined ) {
-      
-      somethingInView = true;
-      scores['team'][team]['mu'] += parseInt(val.options.data.entityScore.entityScore);
-      scores['player'][player]['mu'] += parseInt(val.options.data.entityScore.entityScore);
-      scores['team'][team]['count_fields']++;
-      scores['player'][player]['count_fields']++;
-      
-      var largestMu = scores['team'][team]['largest']['mu'];
-      if(largestMu === undefined || parseInt(largestMu.options.data.entityScore.entityScore) < parseInt(val.options.data.entityScore.entityScore)) {
-        largestMu = val;
-      }
-      scores['team'][team]['largest']['mu'] = largestMu;
-      
-      var largestMu = scores['player'][player]['largest']['mu'];
-      if(largestMu === undefined || parseInt(largestMu.options.data.entityScore.entityScore) < parseInt(val.options.data.entityScore.entityScore)) {
-        largestMu = val;
-      }
-      scores['player'][player]['largest']['mu'] = largestMu;
-    }
-  });
-  $.each(window.links, function(qk, link) {
-    somethingInView = true;
-    var team = getTeam(link.options.data);
-    var player = link.options.data.creator.creatorGuid;
-    window.plugin.scoreboard.initPlayer(player, team);
-    scores['team'][team]['count_links']++;
-    scores['player'][player]['count_links']++;
-  });
-  $.each(window.portals, function(qk, portal) {
-    somethingInView = true;
-    var team = getTeam(portal.options.details);
-    if(team !== TEAM_NONE) {
-      var player = portal.options.details.captured.capturingPlayerId;
-      window.plugin.scoreboard.initPlayer(player, team);
-      scores['team'][team]['count_portals']++;
-      scores['player'][player]['count_portals']++;
-      
-      //$.each(portal.options.details.portalV2.linkedModArray, function(ind, mod) {
-      //  if(mod !== null) {
-      //    somethingInView = true;
-      //    scores['team'][team]['count_shields']++;
-      //    scores['player'][mod.installingUser]['count_shields']++;
-      //  }
-      //});
-      
-      $.each(portal.options.details.resonatorArray.resonators, function(ind, reso) {
-        if(reso !== null) {  
-          somethingInView = true;
-          window.plugin.scoreboard.initPlayer(reso.ownerGuid, team);
-          scores['team'][team]['count_resonators']++;
-          scores['player'][reso.ownerGuid]['count_resonators']++;
+	
+	@@PLUGINSTART@@
+    // PLUGIN START //
+    
+    // use own namespace for plugin
+    window.plugin.scoreboard = function() {};
+    
+    
+    
+    
+    
+    //gets data of all the visible portals on the screen
+    window.plugin.scoreboard.getPortals = function() {
+        
+        var retval=false;
+        
+        var displayBounds = map.getBounds();
+        
+        
+        window.plugin.scoreboard.enlP = 0;
+        window.plugin.scoreboard.resP = 0;
+        window.plugin.scoreboard.enlEightLevelP = 0;
+        window.plugin.scoreboard.resEightLevelP = 0;
+        window.plugin.scoreboard.enlPorLevels = 0;
+        window.plugin.scoreboard.resPorLevels = 0;
+        window.plugin.scoreboard.maxEnl=0;
+        window.plugin.scoreboard.maxRes=0; 
+        window.plugin.scoreboard.healthEnl = 0;
+        window.plugin.scoreboard.healthRes = 0;   
+        
+        
+         //get all portals on screen
+        $.each(window.portals, function(i, portal) {
+            // eliminate offscreen portals (selected, and in padding)
+            if(!displayBounds.contains(portal.getLatLng())) return true;
+            //if there are any portals return true
+            retval=true;
+			
+			//variable that contains portal data
+            var d = portal.options.data;
+			
+			//variable that contains each portal's team value
+            var teamN = portal.options.team;
+            
+            switch (teamN) {   
+                case TEAM_RES:  //if the portal is captured by the resistance,increase each counter's value for resistance counters
+                    window.plugin.scoreboard.healthRes += d.health;
+                    window.plugin.scoreboard.resP++;
+                    window.plugin.scoreboard.resPorLevels = window.plugin.scoreboard.resPorLevels + portal.options.level;
+                    if(portal.options.level===8){window.plugin.scoreboard.resEightLevelP++;}
+                    if(portal.options.level>window.plugin.scoreboard.maxRes){window.plugin.scoreboard.maxRes = portal.options.level;}
+                    break;
+                case TEAM_ENL: //if the portal is captured by the enlightened,increase each counter's value for enlightened counters
+                    window.plugin.scoreboard.healthEnl += d.health;
+                    window.plugin.scoreboard.enlP++;
+                    window.plugin.scoreboard.enlPorLevels = window.plugin.scoreboard.enlPorLevels + portal.options.level;
+                    if(portal.options.level===8){window.plugin.scoreboard.enlEightLevelP++;}
+                    if(portal.options.level>window.plugin.scoreboard.maxEnl){window.plugin.scoreboard.maxEnl = portal.options.level;}
+                    break;
+            }
+            
+            
+            
+            
+            
+            
+        });
+        
+        return retval;
+    } 
+    
+	// The final function that displays the scoreboard by calling the portalTable function
+    window.plugin.scoreboard.displayScoreboard = function() {
+        var html = '';
+        
+        // If there are not portals on screen,display "Nothing to show!"
+        if (window.plugin.scoreboard.getPortals()) {
+            html += window.plugin.scoreboard.portalTable();
+        } else {
+            html = '<table><tr><td>Nothing to show!</td></tr></table>';
+        };
+        
+        if(window.useAndroidPanes()) {
+            $('<div id="scoreboard" class="mobile">' + html + '</div>').appendTo(document.body);
+        } else {
+            dialog({
+                html: '<div id="scoreboard">' + html + '</div>',
+                dialogClass: 'ui-dialog-scoreboard',
+                title: 'Scoreboard',
+                id: 'Scoreboard',
+                width: 700
+            });
         }
-      });
-    }
-  });
-  return somethingInView;
-};
-
-window.plugin.scoreboard.percentSpan = function(percent, cssClass) {
-   var retVal = '';
-   if(percent > 0) {
-      retVal += '<span class="' + cssClass + ' mu_score" style="width:' + percent +'%;">' + percent;
-      if(percent >= 7) { // anything less than this and the text doesnt fit in the span.
-        retVal += '%';
-      }
-      retVal += '</span>';   
-   }
-   return retVal;
-};
-
-window.plugin.scoreboard.teamTableRow = function(field,title) {
-  var scores = window.plugin.scoreboard.scores['team'];
-  var retVal = '<tr><td>'
-   + title
-   + '</td><td class="number">'
-   + window.digits(scores[TEAM_RES][field])
-   + '</td><td class="number">'
-   + window.digits(scores[TEAM_ENL][field])
-   + '</td><td class="number">'
-   + window.digits(scores[TEAM_RES][field] + scores[TEAM_ENL][field])
-   + '</td></tr>';
-  return retVal;
-};
-
-window.plugin.scoreboard.fieldInfo = function(field) {
-  var title = '';
-  var retVal = '';
-  
-  if(field !== undefined) {
-    var portal = window.portals[field.options.vertices.vertexA.guid];
-    if(portal !== undefined) {
-      title = ' @' + portal.options.details.portalV2.descriptiveText.TITLE;
     }
     
-    retVal = '<div title="' + title + '">'
-      + field.options.data.entityScore.entityScore
-      + ' - ' + window.getPlayerName(field.options.data.creator.creatorGuid)
-      + '</div>';
-  }  else {
-    retVal = 'N/A';
-  }
-  return retVal;
-};
-
-window.plugin.scoreboard.playerTableRow = function(playerGuid) {
-  var scores = window.plugin.scoreboard.scores['player'];
-  var retVal = '<tr class="'
-    + (scores[playerGuid]['team'] === TEAM_RES ? 'res' : 'enl')
-    +'"><td>'
-    + window.getPlayerName(playerGuid);
-    + '</td>';
-              
-  $.each(['mu','count_fields','count_links','count_portals','count_resonators'], function(i, field) {
-    retVal += '<td class="number">'
-      + window.digits(scores[playerGuid][field])
-      + '</td>';
-  });
-  retVal += '</tr>';
-  return retVal;
-};
-
-window.plugin.scoreboard.playerTable = function(sortBy) {
-  
-  // Sort the playerGuid array by sortBy
-  window.plugin.scoreboard.playerGuids.sort(function(a, b) {
-    var playerA = window.plugin.scoreboard.scores['player'][a];
-    var playerB = window.plugin.scoreboard.scores['player'][b];
-    var retVal = 0;
-    if(sortBy === 'names') {
-      retVal = window.getPlayerName(a).toLowerCase() < window.getPlayerName(b).toLowerCase() ? -1 : 1;
-    } else {
-      retVal = playerB[sortBy] - playerA[sortBy];
-    }
-    return retVal;
-  });
-  
-  var sort = window.plugin.scoreboard.playerTableSort;
-  var scoreHtml = '<table>'
-    + '<tr><th ' + sort('names', sortBy) + '>Player</th>' 
-    + '<th ' + sort('mu', sortBy) + '>Mu</th>'
-    + '<th ' + sort('count_fields', sortBy) + '>Fields</th>'
-    + '<th ' + sort('count_links', sortBy) + '>Links</th>'
-    + '<th ' + sort('count_portals', sortBy) + '>Portals</th>'
-    + '<th ' + sort('count_resonators', sortBy) + '>Resonators</th></tr>';
-  $.each(window.plugin.scoreboard.playerGuids, function(index, guid) {
-    scoreHtml += window.plugin.scoreboard.playerTableRow(guid);
-  });
-  scoreHtml += '</table>';
-  
-  return scoreHtml;
-}
-
-// A little helper functon so the above isn't so messy
-window.plugin.scoreboard.playerTableSort = function(name, by) {
-  var retVal = 'data-sort="' + name + '"';
-  if(name === by) {
-    retVal += ' class="sorted"';
-  }
-  return retVal;
-};
-
-window.plugin.scoreboard.display = function() {
-  
-  var somethingInView = window.plugin.scoreboard.compileStats();
-  var scores = window.plugin.scoreboard.scores;
-  var resMu = scores['team'][TEAM_RES]['mu'];
-  var enlMu = scores['team'][TEAM_ENL]['mu'];
-  var scoreHtml = '';
-  
-  if(somethingInView) {
-  
-    if(resMu + enlMu > 0) {
-      var resMuPercent = Math.round((resMu / (resMu + enlMu)) * 100);
-      scoreHtml += '<div class="mu_score" title="Resistance:	' + resMu + ' MU Enlightenment:	' + enlMu + ' MU">'
-        + window.plugin.scoreboard.percentSpan(resMuPercent, 'res')
-        + window.plugin.scoreboard.percentSpan(100-resMuPercent, 'enl')
-        + '</div>';
+    
+    
+    //---- function that gets all visible enlightened links on screen
+    window.plugin.scoreboard.getEnlLinks = function() {
+        var displayBounds = map.getBounds();
+        window.plugin.scoreboard.enlL=0;
+        // now every link that starts/ends at a point on screen
+        $.each(window.links, function(guid, link) {
+            // only consider links that start/end on-screen
+            var points = link.getLatLngs();
+            if (displayBounds.contains(points[0]) || displayBounds.contains(points[1])) {
+                if (link.options.team == TEAM_ENL) {
+                    window.plugin.scoreboard.enlL++;
+                } 
+            }
+        });
+        return window.plugin.scoreboard.enlL;
     }
     
-    scoreHtml += '<table>'
-      + '<tr><th></th><th class="number">Resistance</th><th class="number">Enlightened</th><th class="number">Total</th></tr>'
-      + window.plugin.scoreboard.teamTableRow('mu','Mu')
-      + window.plugin.scoreboard.teamTableRow('count_fields','Fields')
-      + window.plugin.scoreboard.teamTableRow('count_links','Links')
-      + window.plugin.scoreboard.teamTableRow('count_portals','Portals')
-      + window.plugin.scoreboard.teamTableRow('count_resonators','Resonators')
-      + '</table>';
-      
-    scoreHtml += '<table>'
-      + '<tr><th></th><th>Resistance</th><th>Enlightened</th></tr>'
-      + '<tr><td>Largest Field</td><td>'
-      + window.plugin.scoreboard.fieldInfo(scores['team'][TEAM_RES]['largest']['mu'])
-      + '</td><td>'
-      + window.plugin.scoreboard.fieldInfo(scores['team'][TEAM_ENL]['largest']['mu'])
-      + '</td></tr>'
-      + '</table>';
+	
+    //----function that gets all visible resistance links on screen
+    window.plugin.scoreboard.getResLinks = function() {
+        var displayBounds = map.getBounds();
+        window.plugin.scoreboard.resL=0;
+        // now every link that starts/ends at a point on screen
+        $.each(window.links, function(guid, link) {
+            // only consider links that start/end on-screen
+            var points = link.getLatLngs();
+            if (displayBounds.contains(points[0]) || displayBounds.contains(points[1])) {// boroume na kanoume ta 2 if ena
+                if (link.options.team == TEAM_RES) {
+                    window.plugin.scoreboard.resL++;
+                } 
+            }
+        });
+        return window.plugin.scoreboard.resL;
+    }
     
-    scoreHtml += '<div id="players">'
-      + window.plugin.scoreboard.playerTable('mu')
-      + '</div>';
     
-    scoreHtml += '<div class="disclaimer">Click on player table headers to sort by that column. '
-      + 'Score is subject to portals available based on zoom level. '
-      + 'If names are unresolved try again. For best results wait until updates are fully loaded.</div>';
-  } else {
-    scoreHtml += 'You need something in view.';  
-  }
-  
-  alert('<div id="scoreboard">' + scoreHtml + '</div>');
-  $(".ui-dialog").addClass('ui-dialog-scoreboard');
-  
-  // Setup sorting
-  $(document).on('click', '#players table th', function() {
-    $('#players').html(window.plugin.scoreboard.playerTable($(this).data('sort')));
-  });
-}
+    
+    
+    
+    //----function that gets all visible enlightened fields on screen
+    window.plugin.scoreboard.getEnlFields = function() {
+        var displayBounds = map.getBounds();
+        window.plugin.scoreboard.enlF=0;
+        // and now all fields that have a vertex on screen
+        $.each(window.fields, function(guid, field) {
+            // only consider fields with at least one vertex on screen
+            var points = field.getLatLngs();
+            if (displayBounds.contains(points[0]) || displayBounds.contains(points[1]) || displayBounds.contains(points[2])) {
+                if (field.options.team == TEAM_ENL) {
+                    window.plugin.scoreboard.enlF++;
+                } 
+            }
+        });
+        return window.plugin.scoreboard.enlF;
+    }
+    
+    
+    
+    //----function that gets all visible resistance fields on screen
+    window.plugin.scoreboard.getResFields = function() {
+        var displayBounds = map.getBounds();
+        window.plugin.scoreboard.resF=0;
+        // and now all fields that have a vertex on screen
+        $.each(window.fields, function(guid, field) {
+            // only consider fields with at least one vertex on screen
+            var points = field.getLatLngs();
+            if (displayBounds.contains(points[0]) || displayBounds.contains(points[1]) || displayBounds.contains(points[2])) {
+                if (field.options.team == TEAM_RES) {
+                    window.plugin.scoreboard.resF++;
+                } 
+            }
+        });
+        return window.plugin.scoreboard.resF;
+    }
+    
+    
+    
+	// A function that creates the html code for the scoreboard table
+	window.plugin.scoreboard.portalTable = function() { 
+        
 
-var setup =  function() {
-  $('body').append('<div id="scoreboard" style="display:none;"></div>');
-  $('#toolbox').append('<a onclick="window.plugin.scoreboard.display()">scoreboard</a>');
-  $('head').append('<style>' +
-    '.ui-dialog-scoreboard {max-width:500px !important; width:500px !important;}' +
-    '#scoreboard table {margin-top:10px;	border-collapse: collapse; empty-cells: show; width:100%; clear: both;}' +
-    '#scoreboard table td, #scoreboard table th {border-bottom: 1px solid #0b314e; padding:3px; color:white; background-color:#1b415e}' +
-    '#scoreboard table tr.res td { background-color: #005684; }' +
-    '#scoreboard table tr.enl td { background-color: #017f01; }' +
-    '#scoreboard table tr:nth-child(even) td { opacity: .8 }' +
-    '#scoreboard table tr:nth-child(odd) td { color: #ddd !important; }' +
-    '#scoreboard table th { text-align:left }' +
-    '#scoreboard table td.number, #scoreboard table th.number { text-align:right }' +
-    '#players table th { cursor:pointer; text-align: right;}' +
-    '#players table th:nth-child(1) { text-align: left;}' +
-    '#scoreboard table th.sorted { color:#FFCE00; }' +
-    '#scoreboard .disclaimer { margin-top:10px; font-size:10px; }' +
-    '.mu_score { margin-bottom: 10px; }' +
-    '.mu_score span { overflow: hidden; padding-top:2px; padding-bottom: 2px; display: block; font-weight: bold; float: left; box-sizing: border-box; -moz-box-sizing:border-box; -webkit-box-sizing:border-box; }' +
-    '.mu_score span.res { background-color: #005684; text-align: right; padding-right:4px; }' +
-    '.mu_score span.enl { background-color: #017f01; padding-left: 4px; }' +
-    '</style>');
-}
+        // html variable declaration
+        var html = "";
+		// Create the header
+        html += '<table class="portals">'
+        + '<tr>'
+        + '<th class="firstColumn">Metrics</th>'
+        + '<th class="enl" >Enlightened</th>'
+        + '<th class="res" >Resistance</th>'
+        + '</tr>\n';
+        
+		// if blocks to avoid division by zero
+        if(window.plugin.scoreboard.enlP!=0){
+            var avgEnl = window.plugin.scoreboard.enlPorLevels/window.plugin.scoreboard.enlP;
+                avgEnl = avgEnl.toFixed(1);
+            var avgHealthEnl = window.plugin.scoreboard.healthEnl/window.plugin.scoreboard.enlP;
+                avgHealthEnl = avgHealthEnl.toFixed(1) }
+        else{
+        var avgEnl = '-';
+        var avgHealthEnl = '0';
+            }
+        
+        if(window.plugin.scoreboard.resP!=0){
+            var avgRes = window.plugin.scoreboard.resPorLevels/window.plugin.scoreboard.resP;
+                avgRes = avgRes.toFixed(1);
+            var avgHealthRes = window.plugin.scoreboard.healthRes/window.plugin.scoreboard.resP;
+                avgHealthRes =  avgHealthRes.toFixed(1);
+        } 
+        else{
+        var avgRes = '-';
+        var avgHealthRes = '0';
+            }
+        
+        
+        // Get field-link count and assign them to variables
+        var enlCountOfLinks= window.plugin.scoreboard.getEnlLinks();
+        var resCountOfLinks= window.plugin.scoreboard.getResLinks();
+        var enlCountOfFields= window.plugin.scoreboard.getEnlFields();
+        var resCountOfFields= window.plugin.scoreboard.getResFields();
+        
+		// Creation of the html code
+        html += '<tr><td class="firstColumn" style="text-align:center;">Number of Portals</td>'+'<td class="enl" style="text-align:center;">'
+        +window.plugin.scoreboard.enlP+'</td>'+'<td class="res" style="text-align:center;">'+window.plugin.scoreboard.resP+'</td></tr>'
+        +'<tr><td class="firstColumn" style="text-align:center;">Average Portal Level</td>'+'<td class="enl" style="text-align:center;">'
+        +avgEnl+'</td>'+'<td class="res" style="text-align:center;">'+avgRes+'</td></tr>'
+        +'<tr><td class="firstColumn" style="text-align:center;">Number of Level 8 Portals</td>'+'<td class="enl" style="text-align:center;">'
+        +window.plugin.scoreboard.enlEightLevelP+'</td>'+'<td class="res" style="text-align:center;">'+window.plugin.scoreboard.resEightLevelP+'</td></tr>'
+        +'<tr><td class="firstColumn" style="text-align:center;">Max Portal Level</td>'+'<td class="enl" style="text-align:center;">'
+        +window.plugin.scoreboard.maxEnl+'</td>'+'<td class="res" style="text-align:center;">'+window.plugin.scoreboard.maxRes+'</td></tr>'
+        +'<tr><td class="firstColumn" style="text-align:center;">Number of Links</td>'+'<td class="enl" style="text-align:center;">'
+        +enlCountOfLinks+'</td>'+'<td class="res" style="text-align:center;">'+resCountOfLinks+'</td></tr>'
+        +'<tr><td class="firstColumn" style="text-align:center;">Number of Fields</td>'+'<td class="enl" style="text-align:center;">'
+        +enlCountOfFields+'</td>'+'<td class="res" style="text-align:center;">'+resCountOfFields+'</td></tr>'
+        +'<tr><td class="firstColumn" style="text-align:center;">Average portal Health</td>'+'<td class="enl" style="text-align:center;">'
+        +avgHealthEnl+'%</td>'+'<td class="res" style="text-align:center;">'+avgHealthRes+'%</td></tr>';
+        
+        
+        
+        html += '</table>';
+        
+        html += '<div class="disclaimer"><b>Zoom in for a more accurate scoreboard!</b></div>';
+        
+        return html;
+    }
+    
+    
+    
+    var setup =  function() {
+        if(window.useAndroidPanes()) {  // use android panes,texture and style
+            android.addPane("plugin-Scoreboard", "Scoreboard", "ic_action_paste");
+            addHook("paneChanged", window.plugin.scoreboard.onPaneChanged);
+        } else {
+            $('#toolbox').append(' <a onclick="window.plugin.scoreboard.displayScoreboard()" title="Display a dynamic scoreboard in the current view">Scoreboard</a>');
+        }
+        
+        $('head').append('<style>' +   //set style for the scoreboard and its cells
+                         '#scoreboard.mobile {background: transparent; border: 0 none !important; height: 100% !important; width: 100% !important; left: 0 !important; top: 0 !important; position: absolute; overflow: auto; }' +
+                         '#scoreboard table { margin-top:5px; border-collapse: collapse; empty-cells: show; width: 100%; clear: both; }' +
+                         '#scoreboard table td, #scoreboard table th {border-bottom: 1px solid #0b314e; padding:3px; color:white; background-color:#1b415e}' +
+                         '#scoreboard table tr.res td { background-color: #005684; }' +
+                         '#scoreboard table tr.enl td { background-color: #017f01; }' +
+                         '#scoreboard table th { text-align: center; }' +
+                         '#scoreboard table td { text-align: center; }' +
+                         '#scoreboard table.portals td { white-space: nowrap; }' +
+                         '#scoreboard .firstColumn { margin-top: 10px;}' +
+                         '#scoreboard .disclaimer { margin-top: 10px; font-size:10px; }' +
+                         '</style>');
+    }
+    
+    
+    // PLUGIN END //////////////////////////////////////////////////////////
+    @@PLUGINEND@@
 
-// PLUGIN END //////////////////////////////////////////////////////////
-
-if(window.iitcLoaded && typeof setup === 'function') {
-  setup();
-} else {
-  if(window.bootPlugins)
-    window.bootPlugins.push(setup);
-  else
-    window.bootPlugins = [setup];
-}
-} // wrapper end
-// inject code into site context
-var script = document.createElement('script');
-script.appendChild(document.createTextNode('('+ wrapper +')();'));
-(document.body || document.head || document.documentElement).appendChild(script);
+    

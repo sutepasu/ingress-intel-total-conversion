@@ -1,21 +1,24 @@
 // ==UserScript==
 // @id             iitc-plugin-compute-ap-stats@Hollow011
 // @name           IITC plugin: Compute AP statistics
-// @version        0.3.0.@@DATETIMEVERSION@@
+// @category       Info
+// @version        0.4.1.@@DATETIMEVERSION@@
 // @namespace      https://github.com/jonatkins/ingress-intel-total-conversion
 // @updateURL      @@UPDATEURL@@
 // @downloadURL    @@DOWNLOADURL@@
-// @description    [@@BUILDNAME@@-@@BUILDDATE@@] Tries to determine overal AP stats for the current zoom
+// @description    [@@BUILDNAME@@-@@BUILDDATE@@] Displays the per-team AP gains available in the current view.
 // @include        https://www.ingress.com/intel*
 // @include        http://www.ingress.com/intel*
 // @match          https://www.ingress.com/intel*
 // @match          http://www.ingress.com/intel*
+// @include        https://www.ingress.com/mission/*
+// @include        http://www.ingress.com/mission/*
+// @match          https://www.ingress.com/mission/*
+// @match          http://www.ingress.com/mission/*
+// @grant          none
 // ==/UserScript==
 
-function wrapper() {
-// ensure plugin framework is there, even if iitc is not yet loaded
-if(typeof window.plugin !== 'function') window.plugin = function() {};
-
+@@PLUGINSTART@@
 
 // PLUGIN START ////////////////////////////////////////////////////////
 
@@ -28,112 +31,141 @@ window.plugin.compAPStats.setupCallback = function() {
   $('#available_ap_display').css({'color':'#ffce00', 'font-size':'90%', 'padding':'4px 2px'});
 
   // do an initial calc for sidebar sizing purposes
-  window.plugin.compAPStats.onPositionMove();
+  window.plugin.compAPStats.update(false);
 
   // make the value update when the map data updates
-  var handleDataResponseOrig = window.handleDataResponse;
-  window.handleDataResponse = function(data, textStatus, jqXHR) {
-    handleDataResponseOrig(data, textStatus, jqXHR);
-    window.plugin.compAPStats.onPositionMove();
+  window.addHook('mapDataRefreshEnd', window.plugin.compAPStats.mapDataRefreshEnd);
+  window.addHook('requestFinished', window.plugin.compAPStats.requestFinished);
+
+}
+
+window.plugin.compAPStats.mapDataRefreshEnd = function() {
+  if (window.plugin.compAPStats.timer) {
+    clearTimeout(window.plugin.compAPStats.timer);
+    window.plugin.compAPStats.timer = undefined;
+  }
+
+  window.plugin.compAPStats.update(true);
+}
+
+window.plugin.compAPStats.requestFinished = function() {
+  // process on a short delay, so if multiple requests finish in a short time we only calculate once
+  if (window.plugin.compAPStats.timer === undefined) {
+    window.plugin.compAPStats.timer = setTimeout( function() {
+      window.plugin.compAPStats.timer = undefined;
+      window.plugin.compAPStats.update(false);
+    }, 0.75*1000);
   }
 }
 
-window.plugin.compAPStats.onPositionMove = function() {
+window.plugin.compAPStats.update = function(hasFinished) {
   var result = window.plugin.compAPStats.compAPStats();
-  $('#available_ap_display').html('Available AP in this area:<table>'
-    + '<tr><td>Enlightened:</td><td style="text-align:right">' + digits(result[1]) + '</td></tr>'
-    + '<tr><td>Resistance:</td><td style="text-align:right">' + digits(result[0]) + '</td></tr>'
+  var loading = hasFinished ? '' : 'Loading...';
+
+  var formatRow = function(team,data) {
+    var title = 'Destroy and capture '+data.destroyPortals+' portals\n'
+              + 'Destroy '+data.destroyLinks+' links and '+data.destroyFields+' fields\n'
+              + 'Capture '+data.capturePortals+' neutral portals, complete '+data.finishPortals+' portals\n'
+              + '(unknown additional AP for links/fields)';
+    return '<tr><td>'+team+'</td><td style="text-align:right" title="'+title+'">'+digits(data.AP)+'</td></tr>';
+  }
+
+
+  $('#available_ap_display').html('Available AP in this area: '
+    + loading
+    + '<table>'
+    + formatRow('Enlightened',result.enl)
+    + formatRow('Resistance', result.res)
     + '</table>');
 }
 
-window.plugin.compAPStats.missingResonatorAP = function(portal) {
-  var resAP = 0;
-  var missing_resonators = 0;
-  $.each(portal.resonatorArray.resonators, function(ind, reso) {
-    if(reso === null) {
-      missing_resonators++;
-    }
-  });
-  if(missing_resonators > 0) {
-    resAP = window.DEPLOY_RESONATOR * missing_resonators;
-    resAP += window.COMPLETION_BONUS;
-  }
-  return(resAP);
-};
 
 window.plugin.compAPStats.compAPStats = function() {
 
-  var totalAP_RES = 0;
-  var totalAP_ENL = 0;
+  var result = {
+    res: { AP: 0, destroyPortals: 0, capturePortals: 0, finishPortals: 0, destroyLinks: 0, destroyFields: 0 },
+    enl: { AP: 0, destroyPortals: 0, capturePortals: 0, finishPortals: 0, destroyLinks: 0, destroyFields: 0 },
+  };
 
-  var allResEdges = [];
-  var allResFields = [];
-  var allEnlEdges = [];
-  var allEnlFields = [];
 
   var displayBounds = map.getBounds();
 
+  // AP to fully deploy a neutral portal
+  var PORTAL_FULL_DEPLOY_AP = CAPTURE_PORTAL + 8*DEPLOY_RESONATOR + COMPLETION_BONUS;
+
   // Grab every portal in the viewable area and compute individual AP stats
+  // (fields and links are counted separately below)
   $.each(window.portals, function(ind, portal) {
-    var d = portal.options.details;
+    var data = portal.options.data;
 
-    // eliminate offscreen portals (selected, and in padding)
-    if(!displayBounds.contains(portal.getLatLng())) return true;
+    // eliminate offscreen portals
+    if(!displayBounds.contains(portal.getLatLng())) return true; //$.each 'continue'
 
-    var portalStats = getAttackApGain(d);
-    var portalSum = portalStats.resoAp + portalStats.captureAp;
-
-    if (getTeam(d) === TEAM_ENL) {
-      totalAP_RES += portalSum;
-
-      $.each(d.portalV2.linkedEdges, function(ind, edge) {
-        if(!edge) return true;
-        allEnlEdges.push(edge.edgeGuid);
-      });
-
-      $.each(d.portalV2.linkedFields, function(ind, field) {
-        if(!field) return true;
-        allEnlFields.push(field);
-      });
-      
-      totalAP_ENL += window.plugin.compAPStats.missingResonatorAP(d);
-      
+    // AP to complete a portal - assuming it's already captured (so no CAPTURE_PORTAL)
+    var completePortalAp = 0;
+    var isFullyDeployed = data.resCount == 8;
+    if (!isFullyDeployed) {
+      completePortalAp = data.resCount != 8 ? (8-data.resCount)*DEPLOY_RESONATOR + COMPLETION_BONUS : 0;
     }
-    else if (getTeam(d) === TEAM_RES) {
-      totalAP_ENL += portalSum;
 
-      $.each(d.portalV2.linkedEdges, function(ind, edge) {
-        if(!edge) return true;
-        allResEdges.push(edge.edgeGuid);
-      });
+    // AP to destroy this portal
+    var destroyAp = data.resCount * DESTROY_RESONATOR;
 
-      $.each(d.portalV2.linkedFields, function(ind, field) {
-        if(!field) return true;
-        allResFields.push(field);
-      });
-      
-      totalAP_RES += window.plugin.compAPStats.missingResonatorAP(d);
-      
+    if (portal.options.team == TEAM_ENL) {
+      result.res.AP += destroyAp + PORTAL_FULL_DEPLOY_AP;
+      result.res.destroyPortals++;
+      if (!isFullyDeployed) {
+        result.enl.AP += completePortalAp;
+        result.enl.finishPortals++;
+      }
+    }
+    else if (portal.options.team == TEAM_RES) {
+      result.enl.AP += destroyAp + PORTAL_FULL_DEPLOY_AP;
+      result.enl.destroyPortals++;
+      if (!isFullyDeployed) {
+        result.res.AP += completePortalAp;
+        result.res.finishPortals++;
+      }
     } else {
       // it's a neutral portal, potential for both teams.  by definition no fields or edges
-      totalAP_ENL += portalSum;
-      totalAP_RES += portalSum;
+      result.enl.AP += PORTAL_FULL_DEPLOY_AP;
+      result.enl.capturePortals++;
+      result.res.AP += PORTAL_FULL_DEPLOY_AP;
+      result.res.capturePortals++;
     }
   });
 
-  // Compute team field AP
-  allResFields = uniqueArray(allResFields);
-  totalAP_ENL += (allResFields.length * DESTROY_FIELD);
-  allEnlFields = uniqueArray(allEnlFields);
-  totalAP_RES += (allEnlFields.length * DESTROY_FIELD);
+  // now every link that starts/ends at a point on screen
+  $.each(window.links, function(guid, link) {
+    // only consider links that start/end on-screen
+    var points = link.getLatLngs();
+    if (displayBounds.contains(points[0]) || displayBounds.contains(points[1])) {
+      if (link.options.team == TEAM_ENL) {
+        result.res.AP += DESTROY_LINK;
+        result.res.destroyLinks++;
+      } else if (link.options.team == TEAM_RES) {
+        result.enl.AP += DESTROY_LINK;
+        result.enl.destroyLinks++;
+      }
+    }
+  });
 
-  // Compute team Link AP
-  allResEdges = uniqueArray(allResEdges);
-  totalAP_ENL += (allResEdges.length * DESTROY_LINK);
-  allEnlEdges = uniqueArray(allEnlEdges);
-  totalAP_RES += (allEnlEdges.length * DESTROY_LINK);
+  // and now all fields that have a vertex on screen
+  $.each(window.fields, function(guid, field) {
+    // only consider fields with at least one vertex on screen
+    var points = field.getLatLngs();
+    if (displayBounds.contains(points[0]) || displayBounds.contains(points[1]) || displayBounds.contains(points[2])) {
+      if (field.options.team == TEAM_ENL) {
+        result.res.AP += DESTROY_FIELD;
+        result.res.destroyFields++;
+      } else if (field.options.team == TEAM_RES) {
+        result.enl.AP += DESTROY_FIELD;
+        result.enl.destroyFields++;
+      }
+    }
+  });
 
-  return [totalAP_RES, totalAP_ENL];
+  return result;
 }
 
 var setup =  function() {
@@ -142,16 +174,4 @@ var setup =  function() {
 
 // PLUGIN END //////////////////////////////////////////////////////////
 
-if(window.iitcLoaded && typeof setup === 'function') {
-  setup();
-} else {
-  if(window.bootPlugins)
-    window.bootPlugins.push(setup);
-  else
-    window.bootPlugins = [setup];
-}
-} // wrapper end
-// inject code into site context
-var script = document.createElement('script');
-script.appendChild(document.createTextNode('('+ wrapper +')();'));
-(document.body || document.head || document.documentElement).appendChild(script);
+@@PLUGINEND@@

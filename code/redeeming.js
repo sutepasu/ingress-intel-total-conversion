@@ -1,92 +1,187 @@
+// REDEEMING ///////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
 
+window.REDEEM_SHORT_NAMES = {
+  'portal shield':'S',
+  'force amp':'FA',
+  'link amp':'LA',
+  'heatsink':'H',
+  'multihack':'M',
+  'turret':'T',
+  'unusual object':'U',
+  'resonator':'R',
+  'xmp burster':'X',
+  'power cube':'C',
+  'media':'M',
+  'ultra strike':'US',
+}
 
-// REDEEMING /////////////////////////////////////////////////////////
+/* These are HTTP status codes returned by the redemption API.
+ * TODO: Move to another file? Use more generally across IITC?
+ */
+window.REDEEM_STATUSES = {
+  429: 'You have been rate-limited by the server. Wait a bit and try again.',
+  500: 'Internal server error'
+};
 
 window.handleRedeemResponse = function(data, textStatus, jqXHR) {
-  if(data.error) {
-    var error = '';
-    if(data.error === 'ALREADY_REDEEMED') {
-      error = 'The passcode has already been redeemed.';
-    } else if(data.error === 'ALREADY_REDEEMED_BY_PLAYER') {
-      error = 'You have already redeemed this passcode.';
-    } else if(data.error === 'INVALID_PASSCODE') {
-      error = 'This passcode is invalid.';
-    } else {
-      error = 'There was a problem redeeming the passcode. Try again?';
-    }
-    alert('<strong>' + data.error + '</strong>\n' + error);
-  } else if(data.result) {
-    var tblResult = $('<table class="redeem-result" />');
-    tblResult.append($('<tr><th colspan="2">Passcode accepted!</th></tr>'));
-  
-    if(data.result.apAward)
-      tblResult.append($('<tr><td>+</td><td>' + data.result.apAward + 'AP</td></tr>'));
-    if(data.result.xmAward)
-      tblResult.append($('<tr><td>+</td><td>' + data.result.xmAward + 'XM</td></tr>'));
-  
-    var resonators = {};
-    var bursts = {};
-    var shields = {};
-     
-    for(var i in data.result.inventoryAward) {
-      var acquired = data.result.inventoryAward[i][2];
-      if(acquired.modResource) {
-        if(acquired.modResource.resourceType === 'RES_SHIELD') {
-          var rarity = acquired.modResource.rarity.split('_').map(function (i) {return i[0]}).join('');
-          if(!shields[rarity]) shields[rarity] = 0;
-          shields[rarity] += 1;
-        }
-      } else if(acquired.resourceWithLevels) {
-        if(acquired.resourceWithLevels.resourceType === 'EMITTER_A') {
-          var level = acquired.resourceWithLevels.level
-          if(!resonators[level]) resonators[level] = 0;
-          resonators[level] += 1;
-        } else if(acquired.resourceWithLevels.resourceType === 'EMP_BURSTER') {
-          var level = acquired.resourceWithLevels.level
-          if(!bursts[level]) bursts[level] = 0;
-          bursts[level] += 1;
-        }
-      }
-    }
-    
-    $.each(resonators, function(lvl, count) {
-      var text = 'Resonator';
-      if(count >= 2) text += ' ('+count+')';
-      tblResult.append($('<tr ><td style="color: ' +window.COLORS_LVL[lvl]+ ';">L' +lvl+ '</td><td>' + text + '</td></tr>'));
-    });
-    $.each(bursts, function(lvl, count) {
-      var text = 'Xmp Burster';
-      if(count >= 2) text += ' ('+count+')';
-      tblResult.append($('<tr ><td style="color: ' +window.COLORS_LVL[lvl]+ ';">L' +lvl+ '</td><td>' + text + '</td></tr>'));
-    });
-    $.each(shields, function(lvl, count) {
-      var text = 'Portal Shield';
-      if(count >= 2) text += ' ('+count+')';
-      tblResult.append($('<tr><td>'+lvl+'</td><td>'+text+'</td></tr>'));
-    });
+  var passcode = jqXHR.passcode;
 
-    alert(tblResult, true);
+  if(data.error) {
+    console.error('Error redeeming passcode "'+passcode+'": ' + data.error)
+    dialog({
+      title: 'Error: ' + passcode,
+      html: '<strong>' + data.error + '</strong>'
+    });
+    return;
   }
+  if(!data.rewards) {
+    console.error('Error redeeming passcode "'+passcode+'": ', data)
+    dialog({
+      title: 'Error: ' + passcode,
+      html: '<strong>An unexpected error occured</strong>'
+    });
+    return;
+  }
+
+  if(data.playerData) {
+    window.PLAYER = data.playerData;
+    window.setupPlayerStat();
+  }
+
+  var format = "long";
+  try {
+    format = localStorage["iitc-passcode-format"];
+  } catch(e) {}
+
+  var formatHandlers = {
+    "short": formatPasscodeShort,
+    "long": formatPasscodeLong
+  }
+  if(!formatHandlers[format])
+    format = "long";
+
+  var html = formatHandlers[format](data.rewards);
+
+  var buttons = {};
+  Object.keys(formatHandlers).forEach(function(label) {
+    if(label == format) return;
+
+    buttons[label.toUpperCase()] = function() {
+      $(this).dialog("close");
+      localStorage["iitc-passcode-format"] = label;
+      handleRedeemResponse(data, textStatus, jqXHR);
+    }
+  });
+
+  // Display it
+  dialog({
+    title: 'Passcode: ' + passcode,
+    html: html,
+    buttons: buttons
+  });
+};
+
+window.formatPasscodeLong = function(data) {
+  var html = '<p><strong>Passcode confirmed. Acquired items:</strong></p><ul class="redeemReward">';
+
+  if(data.other) {
+    data.other.forEach(function(item) {
+      html += '<li>' + window.escapeHtmlSpecialChars(item) + '</li>';
+    });
+  }
+
+  if(0 < data.xm)
+    html += '<li>' + window.escapeHtmlSpecialChars(data.xm) + ' XM</li>';
+  if(0 < data.ap)
+    html += '<li>' + window.escapeHtmlSpecialChars(data.ap) + ' AP</li>';
+
+  if(data.inventory) {
+    data.inventory.forEach(function(type) {
+      type.awards.forEach(function(item) {
+        html += '<li>' + item.count + 'x ';
+
+        var l = item.level;
+        if(0 < l) {
+          l = parseInt(l);
+          html += '<span class="itemlevel" style="color:' + COLORS_LVL[l] + '">L' + l + '</span> ';
+        }
+
+        html += window.escapeHtmlSpecialChars(type.name) + '</li>';
+      });
+    });
+  }
+
+  html += '</ul>'
+  return html;
+}
+
+window.formatPasscodeShort = function(data) {
+
+  if(data.other) {
+    var awards = data.other.map(window.escapeHtmlSpecialChars);
+  } else {
+    var awards = [];
+  }
+
+  if(0 < data.xm)
+    awards.push(window.escapeHtmlSpecialChars(data.xm) + ' XM');
+  if(0 < data.ap)
+    awards.push(window.escapeHtmlSpecialChars(data.ap) + ' AP');
+
+  if(data.inventory) {
+    data.inventory.forEach(function(type) {
+      type.awards.forEach(function(item) {
+        var str = "";
+        if(item.count > 1)
+          str += item.count + "&nbsp;";
+
+        if(window.REDEEM_SHORT_NAMES[type.name.toLowerCase()]) {
+          var shortName = window.REDEEM_SHORT_NAMES[type.name.toLowerCase()];
+
+          var l = item.level;
+          if(0 < l) {
+            l = parseInt(l);
+            str += '<span class="itemlevel" style="color:' + COLORS_LVL[l] + '">' + shortName + l + '</span>';
+          } else {
+            str += shortName;
+          }
+        } else { // no short name known
+          var l = item.level;
+          if(0 < l) {
+            l = parseInt(l);
+            str += '<span class="itemlevel" style="color:' + COLORS_LVL[l] + '">L' + l + '</span> ';
+          }
+          str += type.name;
+        }
+
+        awards.push(str);
+      });
+    });
+  }
+
+  return '<p class="redeemReward">' + awards.join(', ') + '</p>'
 }
 
 window.setupRedeem = function() {
   $("#redeem").keypress(function(e) {
-    if((e.keyCode ? e.keyCode : e.which) != 13) return;
-    var data = {passcode: $(this).val()};
-    window.postAjax('redeemReward', data, window.handleRedeemResponse,
-      function(response) {
-        var extra = '';
-        if(response && response.status) {
-          if(response.status === 429) {
-            extra = 'You have been rate-limited by the server. Wait a bit and try again.';
-          } else {
-            extra = 'The server indicated an error.';
-          }
-          extra += '\nResponse: HTTP <a href="http://httpstatus.es/' + response.status + '" alt="HTTP ' + response.status + '">' + response.status + '</a>.';
-        } else {
-          extra = 'No status code was returned.';
-        }
-        alert('<strong>The HTTP request failed.</strong> ' + extra);
+    if((e.keyCode ? e.keyCode : e.which) !== 13) return;
+
+    var passcode = $(this).val();
+    if(!passcode) return;
+
+    var jqXHR = window.postAjax('redeemReward', {passcode:passcode}, window.handleRedeemResponse, function(response) {
+      var extra = '';
+      if(response.status) {
+        extra = (window.REDEEM_STATUSES[response.status] || 'The server indicated an error.') + ' (HTTP ' + response.status + ')';
+      } else {
+        extra = 'No status code was returned.';
+      }
+      dialog({
+        title: 'Request failed: ' + data.passcode,
+        html: '<strong>The HTTP request failed.</strong> ' + extra
       });
+    });
+    jqXHR.passcode = passcode;
   });
-}
+};

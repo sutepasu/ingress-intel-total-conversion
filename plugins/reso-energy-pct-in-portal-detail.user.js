@@ -1,6 +1,7 @@
 // ==UserScript==
 // @id             iitc-plugin-reso-energy-pct-in-portal-detail@xelio
 // @name           IITC plugin: reso energy pct in portal detail
+// @category       Portal Info
 // @version        0.1.2.@@DATETIMEVERSION@@
 // @namespace      https://github.com/jonatkins/ingress-intel-total-conversion
 // @updateURL      @@UPDATEURL@@
@@ -10,51 +11,41 @@
 // @include        http://www.ingress.com/intel*
 // @match          https://www.ingress.com/intel*
 // @match          http://www.ingress.com/intel*
+// @include        https://www.ingress.com/mission/*
+// @include        http://www.ingress.com/mission/*
+// @match          https://www.ingress.com/mission/*
+// @match          http://www.ingress.com/mission/*
+// @grant          none
 // ==/UserScript==
 
-function wrapper() {
-// ensure plugin framework is there, even if iitc is not yet loaded
-if(typeof window.plugin !== 'function') window.plugin = function() {};
-
+@@PLUGINSTART@@
 
 // PLUGIN START ////////////////////////////////////////////////////////
 
 // use own namespace for plugin
-window.plugin.resoEnergyPctInPortalDetal = function() {};
+window.plugin.resoEnergyPctInPortalDetail = function() {};
 
-window.plugin.resoEnergyPctInPortalDetal.updateMeter = function(data) {
-  var meterLevel = $("span.meter-level");
-  meterLevel
-    .css('top','0px')
-    .css('left','5px')
-    .css('margin-left','0px')
-    .css('font-size','80%')
-    .css('line-height','18px');
-  meterLevel.each(function() {
-    var matchResult = $(this).parent().attr('title').match(/\((\d*\%)\)/);
-    if(matchResult) {
-      var newMeterContent = 'L' + $(this).html() + '&nbsp;&nbsp;' + matchResult[1];
-      $(this).html(newMeterContent);
-    }
-  });
+window.plugin.resoEnergyPctInPortalDetail.updateMeter = function(data) {
+  $("span.meter-level")
+    .css({
+      "word-spacing": "-1px",
+      "text-align": "left",
+      "font-size": "90%",
+      "padding-left": "2px",
+    })
+    .each(function() {
+      var matchResult = $(this).parent().attr('title').match(/\((\d*\%)\)/);
+      if(matchResult) {
+        var html = $(this).html() + '<div style="position:absolute;right:0;top:0">' + matchResult[1] + '</div>';
+        $(this).html(html);
+      }
+    });
 }
 
 var setup =  function() {
-  window.addHook('portalDetailsUpdated', window.plugin.resoEnergyPctInPortalDetal.updateMeter);
+  window.addHook('portalDetailsUpdated', window.plugin.resoEnergyPctInPortalDetail.updateMeter);
 }
 
 // PLUGIN END //////////////////////////////////////////////////////////
 
-if(window.iitcLoaded && typeof setup === 'function') {
-  setup();
-} else {
-  if(window.bootPlugins)
-    window.bootPlugins.push(setup);
-  else
-    window.bootPlugins = [setup];
-}
-} // wrapper end
-// inject code into site context
-var script = document.createElement('script');
-script.appendChild(document.createTextNode('('+ wrapper +')();'));
-(document.body || document.head || document.documentElement).appendChild(script);
+@@PLUGINEND@@
